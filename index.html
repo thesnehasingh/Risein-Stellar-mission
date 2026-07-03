@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>STELLAR // MISSION CONTROL</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-sdk/11.3.0/stellar-sdk.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-freighter-api/5.0.0/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+:root {
+  --bg:     #060500;
+  --panel:  #0a0900;
+  --border: #2a2200;
+  --amber:  #ffb400;
+  --amber2: #ff8c00;
+  --amber3: #ffd466;
+  --green:  #39ff14;
+  --red:    #ff3b3b;
+  --dim:    #4a3c00;
+  --text:   #e8c84a;
+  --mono:   'Share Tech Mono', monospace;
+  --display:'Orbitron', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Scanline overlay */
+body::after {
+  content:'';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* CRT flicker */
+@keyframes flicker {
+  0%,100%  { opacity: 1; }
+  92%      { opacity: 1; }
+  93%      { opacity: 0.92; }
+  94%      { opacity: 1; }
+  96%      { opacity: 0.95; }
+}
+body { animation: flicker 8s infinite; }
+
+/* Amber glow pulse on border */
+@keyframes glow {
+  0%,100% { box-shadow: 0 0 4px var(--amber), inset 0 0 4px rgba(255,180,0,0.04); }
+  50%     { box-shadow: 0 0 10px var(--amber), inset 0 0 8px rgba(255,180,0,0.08); }
+}
+
+/* ── TOP BAR ── */
+#topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--amber);
+  background: var(--panel);
+  position: sticky; top:0; z-index: 100;
+  animation: glow 4s ease-in-out infinite;
+}
+#topbar .logo {
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--amber);
+  text-shadow: 0 0 12px var(--amber);
+}
+#topbar .logo span { color: var(--amber3); }
+#topbar .status-row {
+  display: flex; gap: 18px; align-items: center;
+  font-size: 11px; color: var(--dim);
+}
+#topbar .status-row .dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  margin-right: 5px;
+  animation: blink 1.8s step-start infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+#clock { color: var(--amber3); font-size: 12px; letter-spacing: 2px; }
+
+/* ── LAYOUT ── */
+#grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  grid-template-rows: auto auto;
+  gap: 1px;
+  background: var(--amber);
+  min-height: calc(100vh - 45px);
+}
+
+/* ── PANEL ── */
+.panel {
+  background: var(--panel);
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+.panel-header {
+  font-family: var(--display);
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--bg);
+  background: var(--amber);
+  padding: 5px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-transform: uppercase;
+}
+.panel-header .ph-tag {
+  font-size: 8px;
+  opacity: 0.7;
+}
+.panel-body { padding: 18px; }
+
+/* ── CONNECT PANEL (left col, full height) ── */
+#panel-connect { grid-column: 1; grid-row: 1 / span 3; }
+
+/* ── SCREENS ── */
+#screen-connect, #screen-wallet { }
+#screen-wallet { display: none; }
+
+/* ── ASCII art header ── */
+.ascii-art {
+  font-size: 8px;
+  line-height: 1.2;
+  color: var(--dim);
+  margin-bottom: 16px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* ── Typewriter ── */
+@keyframes cursor { 50% { opacity: 0; } }
+.cursor { display: inline-block; animation: cursor 0.8s step-end infinite; }
+
+/* ── Terminal log ── */
+#boot-log {
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 20px;
+  min-height: 80px;
+}
+#boot-log .line { margin: 2px 0; }
+#boot-log .ok   { color: var(--green); }
+#boot-log .err  { color: var(--red); }
+#boot-log .warn { color: var(--amber2); }
+#boot-log .info { color: var(--text); }
+
+/* ── Buttons ── */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-family: var(--display);
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--amber);
+  background: transparent;
+  color: var(--amber);
+  text-transform: uppercase;
+  transition: all 0.15s;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--amber);
+  transform: translateX(-100%);
+  transition: transform 0.2s;
+  z-index: 0;
+}
+.btn:hover::before { transform: translateX(0); }
+.btn:hover { color: var(--bg); }
+.btn span { position: relative; z-index: 1; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn:disabled::before { display: none; }
+.btn:disabled:hover { color: var(--amber); }
+.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger::before { background: var(--red); }
+.btn.success { border-color: var(--green); color: var(--green); }
+.btn.success::before { background: var(--green); }
+.btn.success:hover { color: var(--bg); }
+.btn-row { display: flex; gap: 8px; }
+.btn-sm { font-size: 9px; padding: 7px 12px; width: auto; }
+
+/* ── Inputs ── */
+.field { margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+input, textarea {
+  width: 100%;
+  background: #0e0c00;
+  border: 1px solid var(--dim);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus { border-color: var(--amber); }
+input::placeholder { color: var(--dim); }
+textarea { resize: vertical; min-height: 70px; }
+
+/* ── Balance display ── */
+.big-balance {
+  font-family: var(--display);
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--amber3);
+  text-shadow: 0 0 20px rgba(255,180,0,0.5);
+  letter-spacing: 2px;
+  line-height: 1;
+  margin: 8px 0 4px;
+}
+.big-balance .unit { font-size: 14px; color: var(--amber); margin-left: 6px; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  margin: 12px 0;
+}
+.stat-cell {
+  background: var(--panel);
+  padding: 10px 12px;
+  text-align: center;
+}
+.stat-cell .sv { font-family: var(--display); font-size: 14px; color: var(--amber3); font-weight: 700; }
+.stat-cell .sk { font-size: 9px; color: var(--dim); letter-spacing: 2px; margin-top: 2px; }
+
+/* ── Address display ── */
+.addr-box {
+  background: #0e0c00;
+  border: 1px solid var(--dim);
+  padding: 8px 10px;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--amber2);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s;
+  margin-bottom: 10px;
+}
+.addr-box:hover { border-color: var(--amber); }
+.addr-box .addr-label {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* ── QR panel ── */
+#qr-container {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0;
+}
+#qr-container canvas, #qr-container img {
+  border: 3px solid var(--amber);
+  filter: sepia(1) saturate(5) hue-rotate(5deg);
+}
+
+/* ── Tx feed ── */
+#tx-feed {
+  font-size: 11px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+#tx-feed::-webkit-scrollbar { width: 4px; }
+#tx-feed::-webkit-scrollbar-track { background: var(--bg); }
+#tx-feed::-webkit-scrollbar-thumb { background: var(--dim); }
+.tx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } }
+.tx-row:last-child { border-bottom: none; }
+.tx-type-badge {
+  font-family: var(--display);
+  font-size: 8px;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+.tx-type-badge.in  { border-color: var(--green); color: var(--green); }
+.tx-type-badge.out { border-color: var(--red);   color: var(--red);   }
+.tx-type-badge.sys { border-color: var(--dim);   color: var(--dim);   }
+.tx-meta { font-size: 10px; color: var(--dim); margin-top: 3px; }
+.tx-amount { font-family: var(--display); font-size: 12px; font-weight: 700; flex-shrink: 0; text-align: right; }
+.tx-amount.in  { color: var(--green); }
+.tx-amount.out { color: var(--red); }
+
+/* ── Network stats ── */
+#net-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--amber); border: 1px solid var(--amber); }
+.ns-cell { background: var(--panel); padding: 8px; text-align: center; }
+.ns-val { font-family: var(--display); font-size: 13px; color: var(--amber3); font-weight: 700; }
+.ns-key { font-size: 8px; color: var(--dim); letter-spacing: 1.5px; margin-top: 2px; text-transform: uppercase; }
+
+/* ── Alert ── */
+.alert {
+  font-size: 11px;
+  padding: 8px 10px;
+  border: 1px solid;
+  margin: 8px 0;
+  display: none;
+  line-height: 1.5;
+}
+.alert.show { display: block; }
+.alert.ok   { border-color: var(--green); color: var(--green); background: rgba(57,255,20,0.05); }
+.alert.err  { border-color: var(--red);   color: var(--red);   background: rgba(255,59,59,0.05); }
+.alert.info { border-color: var(--dim);   color: var(--text);  background: rgba(255,180,0,0.03); }
+
+/* ── Batch input ── */
+.batch-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+.batch-row input { flex: 1; }
+.batch-row input.amt { max-width: 100px; }
+.batch-rm {
+  background: none;
+  border: 1px solid var(--red);
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.batch-rm:hover { background: var(--red); color: var(--bg); }
+
+/* ── Spinner ── */
+.spin {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,180,0,0.2);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: rotate 0.6s linear infinite;
+}
+@keyframes rotate { to { transform: rotate(360deg); } }
+
+/* ── Tab nav ── */
+.tabs { display: flex; border-bottom: 1px solid var(--amber); margin-bottom: 16px; }
+.tab {
+  font-family: var(--display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--dim);
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.tab:hover { color: var(--amber); }
+.tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+
+/* ── Right panels ── */
+#panel-balance { grid-column: 2; grid-row: 1; }
+#panel-send    { grid-column: 2; grid-row: 2; }
+#panel-tx      { grid-column: 2; grid-row: 3; }
+
+/* Progress bar for fee */
+.progress-bar { height: 4px; background: var(--border); margin-top: 6px; }
+.progress-bar .fill { height: 100%; background: var(--amber); transition: width 0.5s; }
+
+/* empty */
+.empty { text-align: center; padding: 24px; color: var(--dim); font-size: 11px; }
+.empty::before { content: '[ NO DATA ]'; display: block; margin-bottom: 8px; font-family: var(--display); font-size: 10px; letter-spacing: 3px; }
+
+@media (max-width: 700px) {
+  #grid { grid-template-columns: 1fr; }
+  #panel-connect { grid-column: 1; grid-row: auto; }
+  #panel-balance, #panel-send, #panel-tx { grid-column: 1; }
+  .big-balance { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">STELLAR // <span>MISSION CONTROL</span></div>
+  <div class="status-row">
+    <span><span class="dot"></span>TESTNET LIVE</span>
+    <span id="ledger-live" style="color:var(--amber2); font-size:10px;">LEDGER —</span>
+    <span id="clock"></span>
+  </div>
+</div>
+
+<!-- GRID -->
+<div id="grid">
+
+  <!-- LEFT COLUMN: Connect / Wallet Info -->
+  <div class="panel" id="panel-connect">
+    <div class="panel-header">
+      <span>// WALLET TERMINAL</span>
+      <span class="ph-tag">SYS:01</span>
+    </div>
+    <div class="panel-body">
+
+      <!-- CONNECT SCREEN -->
+      <div id="screen-connect">
+        <pre class="ascii-art">
+ _____ ______ ____  
+/ ____|__  __/ __ \ 
+| (___   | | | |  | |
+ \___ \  | | | |  | |
+ ____) | | | | |__| |
+|_____/  |_|  \____/ 
+STELLAR MISSION CTRL</pre>
+
+        <div id="boot-log">
+          <div class="line info">&gt; STELLAR MISSION CONTROL v1.0</div>
+          <div class="line info">&gt; Horizon: testnet.stellar.org</div>
+          <div class="line" id="log-ext">&gt; Checking Freighter<span class="cursor">_</span></div>
+        </div>
+
+        <div id="alert-connect" class="alert"></div>
+
+        <button class="btn" id="btn-connect" style="margin-bottom:10px;">
+          <span>[ CONNECT FREIGHTER ]</span>
+        </button>
+        <div style="margin-top:14px; font-size:10px; color: var(--dim); line-height:1.8;">
+          <div>No Freighter?</div>
+          <a href="https://freighter.app" target="_blank"
+             style="color:var(--amber2);">&gt; Install freighter.app</a><br/>
+          <a href="https://laboratory.stellar.org/account/create?network=testnet" target="_blank"
+             style="color:var(--amber2);">&gt; Fund via Friendbot</a>
+        </div>
+      </div>
+
+      <!-- WALLET SCREEN -->
+      <div id="screen-wallet">
+        <div class="addr-box" id="addr-box" onclick="copyAddr()">
+          <div class="addr-label">PUBLIC KEY // CLICK TO COPY</div>
+          <div id="addr-text">—</div>
+        </div>
+
+        <!-- QR Code -->
+        <div id="qr-container"><div id="qr-code"></div></div>
+
+        <!-- Stat grid -->
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <div class="sv" id="stat-xlm">—</div>
+            <div class="sk">BALANCE XLM</div>
+          </div>
+          <div class="stat-cell">
+            <div class="sv" id="stat-usd">—</div>
+            <div class="sk">≈ USD</div>
+          </div>
+          <div class="stat-cell">
+            <div class="sv" id="stat-ops">—</div>
+            <div class="sk">OPERATIONS</div>
+          </div>
+          <div class="stat-cell">
+            <div class="sv" id="stat-seq">—</div>
+            <div class="sk">SEQUENCE</div>
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn btn-sm" id="btn-refresh"><span>↺ REFRESH</span></button>
+          <button class="btn btn-sm danger" id="btn-disconnect"><span>DISCONNECT</span></button>
+        </div>
+
+        <!-- Network stats -->
+        <div style="margin-top:16px;">
+          <div style="font-size:9px; color:var(--dim); letter-spacing:3px; margin-bottom:8px; text-transform:uppercase;">// Network Status</div>
+          <div id="net-stats">
+            <div class="ns-cell"><div class="ns-val" id="ns-fee">—</div><div class="ns-key">Base Fee</div></div>
+            <div class="ns-cell"><div class="ns-val" id="ns-ledger">—</div><div class="ns-key">Ledger</div></div>
+            <div class="ns-cell"><div class="ns-val" id="ns-tps">—</div><div class="ns-key">TX/S</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /panel-connect -->
+
+  <!-- BALANCE PANEL (right top) -->
+  <div class="panel" id="panel-balance" style="display:none;">
+    <div class="panel-header">
+      <span>// ACCOUNT STATUS</span>
+      <span class="ph-tag">MOD:02</span>
+    </div>
+    <div class="panel-body">
+      <div style="font-size:10px; color:var(--dim); letter-spacing:3px;">AVAILABLE BALANCE</div>
+      <div class="big-balance"><span id="balance-main">—</span><span class="unit">XLM</span></div>
+      <div style="font-size:11px; color:var(--amber2); margin-bottom:12px;" id="balance-usd-main">≈ — USD</div>
+      <div style="font-size:10px; color:var(--dim);" id="balance-note">[ MINIMUM RESERVE: 1.00 XLM ]</div>
+    </div>
+  </div>
+
+  <!-- SEND PANEL (right mid) -->
+  <div class="panel" id="panel-send" style="display:none;">
+    <div class="panel-header">
+      <span>// TRANSMISSION CONSOLE</span>
+      <span class="ph-tag">MOD:03</span>
+    </div>
+    <div class="panel-body">
+
+      <!-- Tabs: Single / Batch -->
+      <div class="tabs">
+        <button class="tab active" id="tab-single" onclick="switchTab('single')">Single Send</button>
+        <button class="tab" id="tab-batch" onclick="switchTab('batch')">Batch Send</button>
+      </div>
+
+      <!-- Single send -->
+      <div id="form-single">
+        <div class="field">
+          <label>Destination Address</label>
+          <input type="text" id="send-to" placeholder="GXXXXXXXXXX..." />
+        </div>
+        <div class="field">
+          <label>Amount (XLM)</label>
+          <input type="number" id="send-amount" placeholder="0.0000000" min="0.0000001" step="any" />
+        </div>
+        <div class="field">
+          <label>Memo (optional, max 28 chars)</label>
+          <input type="text" id="send-memo" placeholder="e.g. invoice #1234" maxlength="28" />
+        </div>
+        <button class="btn success" id="btn-send"><span>[ TRANSMIT &gt;&gt; ]</span></button>
+      </div>
+
+      <!-- Batch send -->
+      <div id="form-batch" style="display:none;">
+        <div style="font-size:10px; color:var(--dim); margin-bottom:10px;">
+          Send to multiple addresses in one operation. Each entry = one payment op.
+        </div>
+        <div id="batch-rows"></div>
+        <button class="btn btn-sm" id="btn-add-row" onclick="addBatchRow()" style="margin-bottom:12px; width:auto;">
+          <span>+ ADD RECIPIENT</span>
+        </button>
+        <div class="field">
+          <label>Memo (applies to all)</label>
+          <input type="text" id="batch-memo" placeholder="batch payment" maxlength="28"/>
+        </div>
+        <button class="btn success" id="btn-batch-send"><span>[ BATCH TRANSMIT &gt;&gt; ]</span></button>
+      </div>
+
+      <div id="alert-send" class="alert"></div>
+
+      <!-- Tx hash result -->
+      <div id="tx-result" style="display:none; margin-top:10px; font-size:10px;">
+        <div style="color:var(--dim); letter-spacing:2px; margin-bottom:4px; text-transform:uppercase;">Transaction Hash</div>
+        <div id="tx-hash" style="color:var(--green); word-break:break-all; font-size:11px;"></div>
+        <a id="tx-link" href="#" target="_blank"
+           style="color:var(--amber); font-size:10px; text-decoration:none; margin-top:4px; display:inline-block;">
+          &gt; View on StellarExpert ↗
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- TX PANEL (right bottom) -->
+  <div class="panel" id="panel-tx" style="display:none;">
+    <div class="panel-header">
+      <span>// TRANSACTION LOG</span>
+      <span class="ph-tag">MOD:04</span>
+    </div>
+    <div class="panel-body" style="padding:12px;">
+      <div id="tx-feed">
+        <div class="empty">Connect wallet to view log</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+<script>
+// ─── SETUP ─────────────────────────────────────────────────
+const FreighterAPI = window.freighterApi;
+const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
+let connectedAddress = null;
+let xlmPrice = null;
+
+// ─── CLOCK ─────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toUTCString().replace(/.*(\d{2}:\d{2}:\d{2}).*/, 'UTC $1');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── BOOT LOG ANIMATION ────────────────────────────────────
+const bootLines = [
+  { t:'ok',   m:'> Freighter API loaded' },
+  { t:'ok',   m:'> Stellar SDK v11 ready' },
+  { t:'info', m:'> Network: TESTNET' },
+  { t:'info', m:'> Horizon: horizon-testnet.stellar.org' },
+  { t:'warn', m:'> Awaiting wallet connection...' },
+];
+async function runBoot() {
+  const log = document.getElementById('boot-log');
+  log.innerHTML = '';
+  for (let i = 0; i < bootLines.length; i++) {
+    await new Promise(r => setTimeout(r, 200 + Math.random()*200));
+    const d = document.createElement('div');
+    d.className = 'line ' + bootLines[i].t;
+    d.textContent = bootLines[i].m;
+    log.appendChild(d);
+  }
+  // Check Freighter
+  try {
+    const r = await FreighterAPI.isConnected();
+    const d = document.createElement('div');
+    d.className = 'line ' + (r.isConnected ? 'ok' : 'err');
+    d.textContent = r.isConnected
+      ? '> Freighter detected ✓'
+      : '> Freighter NOT found — install from freighter.app';
+    log.appendChild(d);
+  } catch(e) {
+    const d = document.createElement('div');
+    d.className = 'line err';
+    d.textContent = '> Freighter check failed';
+    log.appendChild(d);
+  }
+}
+runBoot();
+
+// ─── LIVE LEDGER TICKER ────────────────────────────────────
+async function updateLedgerTicker() {
+  try {
+    const res = await fetch('https://horizon-testnet.stellar.org');
+    const data = await res.json();
+    const seq = data.history_latest_ledger || '?';
+    document.getElementById('ledger-live').textContent = `LEDGER #${seq}`;
+    document.getElementById('ns-fee').textContent = data.base_fee_in_stroops ? (data.base_fee_in_stroops/10000000).toFixed(5) : '—';
+    document.getElementById('ns-ledger').textContent = seq;
+    document.getElementById('ns-tps').textContent = data.last_5_minute_ledger_close_time
+      ? (data.last_5_minute_ledger_close_time/300).toFixed(1)
+      : '—';
+  } catch(e) {}
+}
+setInterval(updateLedgerTicker, 10000);
+updateLedgerTicker();
+
+// ─── FETCH XLM PRICE (Stellar DEX USDC) ───────────────────
+async function fetchXLMPrice() {
+  try {
+    // Use Stellar testnet orderbook XLM/USDC or fallback to Coingecko
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd');
+    const d = await r.json();
+    xlmPrice = d.stellar?.usd || null;
+  } catch(e) { xlmPrice = null; }
+}
+fetchXLMPrice();
+setInterval(fetchXLMPrice, 60000);
+
+function toUSD(xlm) {
+  if (!xlmPrice) return '—';
+  return '$' + (parseFloat(xlm) * xlmPrice).toFixed(2);
+}
+
+// ─── ALERT HELPER ─────────────────────────────────────────
+function showAlert(id, msg, type='info') {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = `alert show ${type}`;
+}
+function hideAlert(id) {
+  document.getElementById(id).className = 'alert';
+}
+
+// ─── COPY ADDRESS ─────────────────────────────────────────
+function copyAddr() {
+  if (!connectedAddress) return;
+  navigator.clipboard.writeText(connectedAddress);
+  const box = document.getElementById('addr-box');
+  const orig = box.querySelector('.addr-label').textContent;
+  box.querySelector('.addr-label').textContent = 'COPIED TO CLIPBOARD ✓';
+  setTimeout(() => box.querySelector('.addr-label').textContent = orig, 2000);
+}
+
+// ─── QR CODE ──────────────────────────────────────────────
+function generateQR(addr) {
+  const el = document.getElementById('qr-code');
+  el.innerHTML = '';
+  new QRCode(el, {
+    text: addr,
+    width: 120, height: 120,
+    colorDark: '#ffb400',
+    colorLight: '#0a0900',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+}
+
+// ─── CONNECT ──────────────────────────────────────────────
+document.getElementById('btn-connect').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-connect');
+  hideAlert('alert-connect');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span><span> CONNECTING...</span>';
+
+  try {
+    const r = await FreighterAPI.requestAccess();
+    if (r.error) throw new Error(r.error.message || 'Access denied');
+
+    // Check network
+    let netInfo = {};
+    try { netInfo = await FreighterAPI.getNetwork(); } catch(e) {}
+    const net = (netInfo.network || netInfo.networkPassphrase || '').toLowerCase();
+    if (!net.includes('test')) {
+      showAlert('alert-connect',
+        '⚠ Switch Freighter to TESTNET: Settings → Network → Test SDF Network', 'err');
+      btn.disabled = false;
+      btn.innerHTML = '<span>[ CONNECT FREIGHTER ]</span>';
+      return;
+    }
+
+    connectedAddress = r.address;
+    showDashboard();
+  } catch(e) {
+    showAlert('alert-connect', '> ERROR: ' + (e.message || 'Connection failed'), 'err');
+    btn.disabled = false;
+    btn.innerHTML = '<span>[ CONNECT FREIGHTER ]</span>';
+  }
+});
+
+// ─── SHOW DASHBOARD ───────────────────────────────────────
+function showDashboard() {
+  document.getElementById('screen-connect').style.display = 'none';
+  document.getElementById('screen-wallet').style.display = 'block';
+  ['panel-balance','panel-send','panel-tx'].forEach(id => {
+    document.getElementById(id).style.display = 'block';
+  });
+
+  document.getElementById('addr-text').textContent = connectedAddress;
+  generateQR(connectedAddress);
+  loadAccount();
+  loadNetStats();
+}
+
+// ─── LOAD ACCOUNT ─────────────────────────────────────────
+async function loadAccount() {
+  document.getElementById('stat-xlm').textContent = '…';
+  try {
+    const acc = await server.loadAccount(connectedAddress);
+    const native = acc.balances.find(b => b.asset_type === 'native');
+    const xlm = native ? parseFloat(native.balance).toFixed(4) : '0.0000';
+    const usd = toUSD(xlm);
+
+    // Stats
+    document.getElementById('stat-xlm').textContent = xlm;
+    document.getElementById('stat-usd').textContent = usd !== '—' ? usd : '—';
+    document.getElementById('stat-seq').textContent = acc.sequence.slice(-4);
+    document.getElementById('stat-ops').textContent = acc.subentry_count || 0;
+
+    // Big balance
+    document.getElementById('balance-main').textContent = xlm;
+    document.getElementById('balance-usd-main').textContent = `≈ ${usd} USD`;
+
+    // Tx log
+    loadTxLog();
+  } catch(e) {
+    document.getElementById('stat-xlm').textContent = '!ERR';
+    if (e.response?.status === 404) {
+      document.getElementById('balance-main').textContent = '0.0000';
+      document.getElementById('balance-usd-main').textContent = 'Account not yet funded';
+      document.getElementById('tx-feed').innerHTML = '<div class="empty">Fund via Friendbot first</div>';
+    }
+  }
+}
+
+// ─── TX LOG ───────────────────────────────────────────────
+async function loadTxLog() {
+  const feed = document.getElementById('tx-feed');
+  feed.innerHTML = '';
+  try {
+    const ops = await server.operations()
+      .forAccount(connectedAddress)
+      .order('desc').limit(20).call();
+
+    if (!ops.records.length) {
+      feed.innerHTML = '<div class="empty">No transactions yet</div>';
+      return;
+    }
+
+    for (const op of ops.records) {
+      feed.appendChild(buildTxRow(op));
+    }
+  } catch(e) {
+    feed.innerHTML = '<div class="empty">Error loading log</div>';
+  }
+}
+
+function buildTxRow(op) {
+  const me = connectedAddress;
+  const row = document.createElement('div');
+  row.className = 'tx-row';
+
+  let cls = 'sys', label = op.type.replace(/_/g,' '), amt = '', amtCls = '';
+
+  if (op.type === 'payment') {
+    const isIn = op.to === me;
+    cls = isIn ? 'in' : 'out';
+    label = isIn ? 'RECV' : 'SEND';
+    const sign = isIn ? '+' : '-';
+    amt = sign + parseFloat(op.amount).toFixed(4) + ' XLM';
+    amtCls = isIn ? 'in' : 'out';
+  } else if (op.type === 'create_account') {
+    cls = 'in'; label = 'FUNDED';
+    amt = '+' + parseFloat(op.starting_balance).toFixed(4) + ' XLM';
+    amtCls = 'in';
+  }
+
+  const peer = op.type === 'payment' ? (op.to === me ? op.from : op.to) : (op.funder || '');
+  const date = new Date(op.created_at).toLocaleString();
+
+  row.innerHTML = `
+    <div>
+      <span class="tx-type-badge ${cls}">${label}</span>
+      ${peer ? `<div class="tx-meta">${peer.slice(0,8)}…${peer.slice(-6)}</div>` : ''}
+      <div class="tx-meta">${date}</div>
+    </div>
+    <div style="text-align:right;">
+      ${amt ? `<div class="tx-amount ${amtCls}">${amt}</div>` : '<div class="tx-amount" style="color:var(--dim)">—</div>'}
+      <div class="tx-meta">
+        <a href="https://stellar.expert/explorer/testnet/tx/${op.transaction_hash}"
+           target="_blank" style="color:var(--amber2); text-decoration:none;">#${op.transaction_hash.slice(0,8)}↗</a>
+      </div>
+    </div>`;
+  return row;
+}
+
+// ─── NET STATS ────────────────────────────────────────────
+async function loadNetStats() {
+  try {
+    const r = await fetch('https://horizon-testnet.stellar.org');
+    const d = await r.json();
+    document.getElementById('ns-ledger').textContent = d.history_latest_ledger || '—';
+    document.getElementById('ns-fee').textContent = d.base_fee_in_stroops
+      ? d.base_fee_in_stroops + ' s'
+      : '—';
+  } catch(e) {}
+}
+
+// ─── REFRESH ──────────────────────────────────────────────
+document.getElementById('btn-refresh').addEventListener('click', loadAccount);
+
+// ─── DISCONNECT ───────────────────────────────────────────
+document.getElementById('btn-disconnect').addEventListener('click', () => {
+  connectedAddress = null;
+  xlmPrice = null;
+  document.getElementById('screen-connect').style.display = 'block';
+  document.getElementById('screen-wallet').style.display = 'none';
+  ['panel-balance','panel-send','panel-tx'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('qr-code').innerHTML = '';
+  document.getElementById('tx-result').style.display = 'none';
+  hideAlert('alert-send');
+  runBoot();
+});
+
+// ─── TABS: Single / Batch ─────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('form-single').style.display = tab === 'single' ? 'block' : 'none';
+  document.getElementById('form-batch').style.display = tab === 'batch' ? 'block' : 'none';
+  document.getElementById('tab-single').className = 'tab' + (tab==='single'?' active':'');
+  document.getElementById('tab-batch').className = 'tab' + (tab==='batch'?' active':'');
+  hideAlert('alert-send');
+  document.getElementById('tx-result').style.display = 'none';
+}
+
+// ─── BATCH ROWS ───────────────────────────────────────────
+function addBatchRow() {
+  const container = document.getElementById('batch-rows');
+  const row = document.createElement('div');
+  row.className = 'batch-row';
+  row.innerHTML = `
+    <input type="text" placeholder="GXXXXXXXXXX..." class="batch-addr"/>
+    <input type="number" placeholder="XLM" class="amt batch-amt" min="0.0000001" step="any"/>
+    <button class="batch-rm" onclick="this.parentElement.remove()">✕</button>`;
+  container.appendChild(row);
+}
+// Initialise with 2 rows
+addBatchRow(); addBatchRow();
+
+// ─── SEND HELPERS ─────────────────────────────────────────
+function showTxResult(hash) {
+  const el = document.getElementById('tx-result');
+  document.getElementById('tx-hash').textContent = hash;
+  document.getElementById('tx-link').href =
+    `https://stellar.expert/explorer/testnet/tx/${hash}`;
+  el.style.display = 'block';
+}
+
+async function signAndSubmit(xdr) {
+  const signResult = await FreighterAPI.signTransaction(xdr, {
+    networkPassphrase: StellarSdk.Networks.TESTNET,
+  });
+  if (signResult.error) throw new Error(signResult.error.message || 'User rejected');
+  const signed = StellarSdk.TransactionBuilder.fromXDR(
+    signResult.signedTxXdr, StellarSdk.Networks.TESTNET);
+  return server.submitTransaction(signed);
+}
+
+// ─── SINGLE SEND ──────────────────────────────────────────
+document.getElementById('btn-send').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-send');
+  const toAddr = document.getElementById('send-to').value.trim();
+  const amount = document.getElementById('send-amount').value.trim();
+  const memo   = document.getElementById('send-memo').value.trim();
+  hideAlert('alert-send');
+  document.getElementById('tx-result').style.display = 'none';
+
+  if (!toAddr || !amount) { showAlert('alert-send','> ERROR: Address and amount required','err'); return; }
+  if (parseFloat(amount) <= 0) { showAlert('alert-send','> ERROR: Amount must be > 0','err'); return; }
+  if (toAddr === connectedAddress) { showAlert('alert-send','> ERROR: Cannot send to self','err'); return; }
+  try { StellarSdk.Keypair.fromPublicKey(toAddr); }
+  catch { showAlert('alert-send','> ERROR: Invalid destination address','err'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span><span> BUILDING TX...</span>';
+
+  try {
+    const src = await server.loadAccount(connectedAddress);
+    const fee = await server.fetchBaseFee();
+    const txb = new StellarSdk.TransactionBuilder(src, {
+      fee, networkPassphrase: StellarSdk.Networks.TESTNET
+    }).addOperation(StellarSdk.Operation.payment({
+      destination: toAddr,
+      asset: StellarSdk.Asset.native(),
+      amount: parseFloat(amount).toFixed(7),
+    })).setTimeout(60);
+
+    if (memo) txb.addMemo(StellarSdk.Memo.text(memo));
+    const tx = txb.build();
+
+    btn.innerHTML = '<span class="spin"></span><span> SIGN IN FREIGHTER...</span>';
+    const result = await signAndSubmit(tx.toXDR());
+
+    showAlert('alert-send', '> TRANSMISSION CONFIRMED', 'ok');
+    showTxResult(result.hash);
+    document.getElementById('send-to').value = '';
+    document.getElementById('send-amount').value = '';
+    document.getElementById('send-memo').value = '';
+    setTimeout(loadAccount, 2500);
+  } catch(e) {
+    let msg = e.message || 'Transaction failed';
+    if (e.response?.data?.extras?.result_codes) {
+      msg = JSON.stringify(e.response.data.extras.result_codes);
+    }
+    showAlert('alert-send', '> ERROR: ' + msg, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>[ TRANSMIT &gt;&gt; ]</span>';
+  }
+});
+
+// ─── BATCH SEND ───────────────────────────────────────────
+document.getElementById('btn-batch-send').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-batch-send');
+  hideAlert('alert-send');
+  document.getElementById('tx-result').style.display = 'none';
+
+  const addrs = Array.from(document.querySelectorAll('.batch-addr')).map(i => i.value.trim());
+  const amts  = Array.from(document.querySelectorAll('.batch-amt')).map(i => i.value.trim());
+  const memo  = document.getElementById('batch-memo').value.trim();
+
+  // Validate all rows
+  for (let i = 0; i < addrs.length; i++) {
+    if (!addrs[i] || !amts[i]) { showAlert('alert-send',`> ERROR: Row ${i+1} incomplete`,'err'); return; }
+    if (parseFloat(amts[i]) <= 0) { showAlert('alert-send',`> ERROR: Row ${i+1} amount invalid`,'err'); return; }
+    try { StellarSdk.Keypair.fromPublicKey(addrs[i]); }
+    catch { showAlert('alert-send',`> ERROR: Row ${i+1} invalid address`,'err'); return; }
+  }
+  if (addrs.length === 0) { showAlert('alert-send','> ERROR: Add at least one recipient','err'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span><span> BUILDING BATCH...</span>';
+
+  try {
+    const src = await server.loadAccount(connectedAddress);
+    const fee = await server.fetchBaseFee();
+    const txb = new StellarSdk.TransactionBuilder(src, {
+      fee, networkPassphrase: StellarSdk.Networks.TESTNET
+    }).setTimeout(60);
+
+    for (let i = 0; i < addrs.length; i++) {
+      txb.addOperation(StellarSdk.Operation.payment({
+        destination: addrs[i],
+        asset: StellarSdk.Asset.native(),
+        amount: parseFloat(amts[i]).toFixed(7),
+      }));
+    }
+    if (memo) txb.addMemo(StellarSdk.Memo.text(memo));
+
+    const tx = txb.build();
+    btn.innerHTML = '<span class="spin"></span><span> SIGN IN FREIGHTER...</span>';
+    const result = await signAndSubmit(tx.toXDR());
+
+    showAlert('alert-send', `> BATCH OF ${addrs.length} TX CONFIRMED`, 'ok');
+    showTxResult(result.hash);
+    setTimeout(loadAccount, 2500);
+  } catch(e) {
+    let msg = e.message || 'Batch failed';
+    if (e.response?.data?.extras?.result_codes) msg = JSON.stringify(e.response.data.extras.result_codes);
+    showAlert('alert-send', '> ERROR: ' + msg, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>[ BATCH TRANSMIT &gt;&gt; ]</span>';
+  }
+});
+</script>
+</body>
+</html>
